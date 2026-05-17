@@ -9,20 +9,17 @@ from twilio.twiml.messaging_response import MessagingResponse
 #  CONFIGURATION
 # ─────────────────────────────────────────────
 
-SENDGRID_API_KEY  = os.environ.get("SENDGRID_API_KEY", "")
-GITHUB_PAT        = os.environ.get("GITHUB_PAT", "")       # Your GitHub Personal Access Token
-GITHUB_USER       = "Ellesonntseare"
-GITHUB_REPO       = "whatsapp-email-sender"
-GITHUB_BRANCH     = "main"                                  # change to "master" if needed
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
+GITHUB_USER      = "Ellesonntseare"
+GITHUB_REPO      = "whatsapp-email-sender"
+GITHUB_BRANCH    = "main"
 
-GITHUB_API_BASE   = (
-    f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}"
-    f"/contents/{{filepath}}?ref={GITHUB_BRANCH}"
+# Public raw URL — no PAT needed since repo is public
+GITHUB_RAW_BASE  = (
+    f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/{GITHUB_BRANCH}/"
 )
 
 # ── PROFILES ──────────────────────────────────
-# Each profile has its own sender info, documents, and email body.
-# Filenames must match exactly what is uploaded to the GitHub repo.
 
 PROFILES = {
     "serame": {
@@ -43,7 +40,7 @@ PROFILES = {
         ],
     },
     "mathapelo": {
-        "from_email": "ellesonntseare@gmail.com",   # change if Mathapelo has her own sender email
+        "from_email": "ellesonntseare@gmail.com",
         "from_name":  "Mathapelo",
         "email_body": (
             "Good day,\n\n"
@@ -60,7 +57,6 @@ PROFILES = {
 }
 
 # In-memory session store { whatsapp_number: { "profile": "serame" | "mathapelo" } }
-# NOTE: resets every time the server restarts.
 SESSIONS = {}
 
 # ─────────────────────────────────────────────
@@ -69,33 +65,23 @@ SESSIONS = {}
 
 def fetch_file_from_github(filename):
     """
-    Fetches a file from the private GitHub repo using the PAT.
+    Fetches a file from the public GitHub repo using raw URL.
     Returns (base64_encoded_string, error_message).
-    GitHub API already returns file content as base64.
     """
-    url = GITHUB_API_BASE.format(filepath=requests.utils.quote(filename, safe="/"))
-    headers = {
-        "Authorization": f"token {GITHUB_PAT}",
-        "Accept":        "application/vnd.github.v3+json",
-    }
-    resp = requests.get(url, headers=headers)
+    url  = GITHUB_RAW_BASE + requests.utils.quote(filename, safe="/")
+    resp = requests.get(url)
 
     if resp.status_code == 200:
-        data = resp.json()
-        # Strip newlines GitHub adds to the base64 string
-        return data.get("content", "").replace("\n", ""), None
+        encoded = base64.b64encode(resp.content).decode()
+        return encoded, None
     else:
-        return None, f"{resp.status_code} - {resp.text}"
+        return None, f"{resp.status_code} - {resp.text[:200]}"
 
 # ─────────────────────────────────────────────
 #  HELPERS
 # ─────────────────────────────────────────────
 
 def parse_send_command(text):
-    """
-    Expects: email subject
-    Returns (email, subject) or (None, None).
-    """
     match = re.match(r"([\w\.-]+@[\w\.-]+\.\w+)\s+(.+)", text.strip())
     if not match:
         return None, None
@@ -110,7 +96,7 @@ def send_email(profile_key, recipient, subject):
     for filename in profile["attachments"]:
         encoded, error = fetch_file_from_github(filename)
         if error:
-            print(f"⚠️  Could not fetch '{filename}' from GitHub: {error}")
+            print(f"⚠️  Could not fetch '{filename}': {error}")
             errors.append(filename)
             continue
         attachments.append({
@@ -152,16 +138,11 @@ def index():
 
 @app.route("/debug")
 def debug():
-    """
-    Visit /debug to verify your environment variables and that
-    all files can be fetched from GitHub.
-    """
     sg_key = os.environ.get("SENDGRID_API_KEY", "")
-    gh_pat = os.environ.get("GITHUB_PAT", "")
     lines  = [
         f"SendGrid key set : {'✅' if sg_key else '❌'}",
-        f"GitHub PAT set   : {'✅' if gh_pat else '❌'}",
         f"Repo             : {GITHUB_USER}/{GITHUB_REPO} (branch: {GITHUB_BRANCH})",
+        f"Fetching via     : raw.githubusercontent.com (no PAT needed)",
         "",
     ]
     for pname, profile in PROFILES.items():
@@ -172,21 +153,6 @@ def debug():
             lines.append(f"  {filename}: {status}")
         lines.append("")
     return "\n".join(lines)
-
-
-@app.route("/envcheck")
-def envcheck():
-    """
-    Shows the first 10 chars of GITHUB_PAT to confirm
-    the correct value is loaded (safe - does not expose full token).
-    """
-    pat = os.environ.get("GITHUB_PAT", "")
-    all_keys = sorted(os.environ.keys())
-    return (
-        f"GITHUB_PAT length : {len(pat)}\n"
-        f"GITHUB_PAT prefix : {pat[:10] if pat else 'EMPTY'}\n\n"
-        f"All env var keys  : {all_keys}"
-    )
 
 
 @app.route("/whatsapp", methods=["POST"])
@@ -250,7 +216,7 @@ def whatsapp():
     try:
         status, response_text, missing = send_email(profile_key, email, subject)
         if status in (200, 202):
-            note = f"\n⚠️ Skipped (not found on GitHub): {', '.join(missing)}" if missing else ""
+            note = f"\n⚠️ Skipped (not found): {', '.join(missing)}" if missing else ""
             resp.message(
                 f"✅ Email sent to *{email}*\n"
                 f"Subject: *{subject}*\n"
