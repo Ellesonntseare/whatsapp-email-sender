@@ -10,7 +10,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 #  CONFIGURATION
 # ─────────────────────────────────────────────
 
-SENDGRID_API_KEY = "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"
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY")  # Set this in Railway Variables
 FROM_EMAIL       = "ellesonntseare@gmail.com"
 FROM_NAME        = "Serame"
 
