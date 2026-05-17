@@ -1,20 +1,24 @@
 import os
 import re
 import base64
+import json
 import requests
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
+from twilio.rest import Client
 
 # ─────────────────────────────────────────────
 #  CONFIGURATION
 # ─────────────────────────────────────────────
 
-SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
+SENDGRID_API_KEY  = os.environ.get("SENDGRID_API_KEY", "")
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN  = os.environ.get("TWILIO_AUTH_TOKEN", "")
+TWILIO_WA_NUMBER   = os.environ.get("TWILIO_WA_NUMBER", "")  # e.g. whatsapp:+14155238886
+
 GITHUB_USER      = "Ellesonntseare"
 GITHUB_REPO      = "whatsapp-email-sender"
 GITHUB_BRANCH    = "main"
-
-# Public raw URL — no PAT needed since repo is public
 GITHUB_RAW_BASE  = (
     f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/{GITHUB_BRANCH}/"
 )
@@ -56,30 +60,19 @@ PROFILES = {
     },
 }
 
-# In-memory session store { whatsapp_number: { "profile": "serame" | "mathapelo" } }
 SESSIONS = {}
-
-# ─────────────────────────────────────────────
-#  GITHUB FILE FETCHER
-# ─────────────────────────────────────────────
-
-def fetch_file_from_github(filename):
-    """
-    Fetches a file from the public GitHub repo using raw URL.
-    Returns (base64_encoded_string, error_message).
-    """
-    url  = GITHUB_RAW_BASE + requests.utils.quote(filename, safe="/")
-    resp = requests.get(url)
-
-    if resp.status_code == 200:
-        encoded = base64.b64encode(resp.content).decode()
-        return encoded, None
-    else:
-        return None, f"{resp.status_code} - {resp.text[:200]}"
 
 # ─────────────────────────────────────────────
 #  HELPERS
 # ─────────────────────────────────────────────
+
+def fetch_file_from_github(filename):
+    url  = GITHUB_RAW_BASE + requests.utils.quote(filename, safe="/")
+    resp = requests.get(url)
+    if resp.status_code == 200:
+        return base64.b64encode(resp.content).decode(), None
+    return None, f"{resp.status_code} - {resp.text[:200]}"
+
 
 def parse_send_command(text):
     match = re.match(r"([\w\.-]+@[\w\.-]+\.\w+)\s+(.+)", text.strip())
@@ -124,6 +117,36 @@ def send_email(profile_key, recipient, subject):
     )
     return response.status_code, response.text, errors
 
+
+def send_interactive_buttons(to):
+    """
+    Sends a WhatsApp interactive button message via Twilio API
+    so the user can tap to choose a profile.
+    """
+    client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
+    interactive = {
+        "type": "button",
+        "body": {"text": "👋 Welcome! Who would you like to log in as?"},
+        "action": {
+            "buttons": [
+                {"type": "reply", "reply": {"id": "serame",    "title": "Serame"}},
+                {"type": "reply", "reply": {"id": "mathapelo", "title": "Mathapelo"}},
+            ]
+        }
+    }
+
+    client.messages.create(
+        from_=TWILIO_WA_NUMBER,
+        to=to,
+        body="",
+        persistent_action=[],
+        content_sid=None,
+        content_variables=None,
+        **{"interactive": json.dumps(interactive)}
+    )
+
+
 # ─────────────────────────────────────────────
 #  FLASK APP
 # ─────────────────────────────────────────────
@@ -140,9 +163,11 @@ def index():
 def debug():
     sg_key = os.environ.get("SENDGRID_API_KEY", "")
     lines  = [
-        f"SendGrid key set : {'✅' if sg_key else '❌'}",
-        f"Repo             : {GITHUB_USER}/{GITHUB_REPO} (branch: {GITHUB_BRANCH})",
-        f"Fetching via     : raw.githubusercontent.com (no PAT needed)",
+        f"SendGrid key set  : {'✅' if sg_key else '❌'}",
+        f"Twilio SID set    : {'✅' if TWILIO_ACCOUNT_SID else '❌'}",
+        f"Twilio Token set  : {'✅' if TWILIO_AUTH_TOKEN else '❌'}",
+        f"Twilio WA number  : {'✅' if TWILIO_WA_NUMBER else '❌'}",
+        f"Repo              : {GITHUB_USER}/{GITHUB_REPO} (branch: {GITHUB_BRANCH})",
         "",
     ]
     for pname, profile in PROFILES.items():
@@ -157,46 +182,48 @@ def debug():
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
-    incoming   = request.form.get("Body", "").strip()
-    sender     = request.form.get("From", "unknown")
-    resp       = MessagingResponse()
-    text_lower = incoming.lower()
+    incoming    = request.form.get("Body", "").strip()
+    sender      = request.form.get("From", "unknown")
+    button_id   = request.form.get("ButtonPayload", "").strip().lower()
+    resp        = MessagingResponse()
+    text_lower  = incoming.lower()
+
+    # Button reply takes priority over typed text
+    selection = button_id if button_id else text_lower
 
     # ── LOGOUT / SWITCH ───────────────────────
-    if text_lower in ("logout", "switch", "exit"):
+    if selection in ("logout", "switch", "exit"):
         SESSIONS.pop(sender, None)
-        resp.message(
-            "👋 Logged out.\n\n"
-            "Who would you like to log in as?\n\n"
-            "Type *SERAME* or *MATHAPELO*"
-        )
+        try:
+            send_interactive_buttons(sender)
+        except Exception:
+            resp.message(
+                "👋 Logged out.\n\n"
+                "Who would you like to log in as?\n\n"
+                "Type *SERAME* or *MATHAPELO*"
+            )
         return str(resp)
 
     # ── NOT logged in yet ─────────────────────
     if sender not in SESSIONS:
-        if text_lower == "serame":
-            SESSIONS[sender] = {"profile": "serame"}
+        if selection in ("serame", "mathapelo"):
+            SESSIONS[sender] = {"profile": selection}
             resp.message(
-                "✅ Logged in as *SERAME*.\n\n"
+                f"✅ Logged in as *{selection.upper()}*.\n\n"
                 "To send your documents, use this format:\n\n"
                 "*email subject*\n\n"
-                "Example:\njohn@gmail.com Job Application – Serame\n\n"
-                "Type *logout* to switch profiles."
-            )
-        elif text_lower == "mathapelo":
-            SESSIONS[sender] = {"profile": "mathapelo"}
-            resp.message(
-                "✅ Logged in as *MATHAPELO*.\n\n"
-                "To send your documents, use this format:\n\n"
-                "*email subject*\n\n"
-                "Example:\njohn@gmail.com Job Application – Mathapelo\n\n"
+                f"Example:\njohn@gmail.com Job Application – {selection.capitalize()}\n\n"
                 "Type *logout* to switch profiles."
             )
         else:
-            resp.message(
-                "👋 Welcome! Who would you like to log in as?\n\n"
-                "Type *SERAME* or *MATHAPELO*"
-            )
+            # Send interactive buttons; fall back to text if it fails
+            try:
+                send_interactive_buttons(sender)
+            except Exception:
+                resp.message(
+                    "👋 Welcome! Who would you like to log in as?\n\n"
+                    "Type *SERAME* or *MATHAPELO*"
+                )
         return str(resp)
 
     # ── Already logged in ─────────────────────
