@@ -174,6 +174,21 @@ def debug():
     return "\n".join(lines)
 
 
+@app.route("/envcheck")
+def envcheck():
+    """
+    Shows the first 10 chars of GITHUB_PAT to confirm
+    the correct value is loaded (safe - does not expose full token).
+    """
+    pat = os.environ.get("GITHUB_PAT", "")
+    all_keys = sorted(os.environ.keys())
+    return (
+        f"GITHUB_PAT length : {len(pat)}\n"
+        f"GITHUB_PAT prefix : {pat[:10] if pat else 'EMPTY'}\n\n"
+        f"All env var keys  : {all_keys}"
+    )
+
+
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     incoming   = request.form.get("Body", "").strip()
