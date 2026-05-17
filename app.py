@@ -31,23 +31,16 @@ DRIVE_FILES = [
 
 def parse_message(text):
     """
-    Expects format: email | subject
-    Example: john@gmail.com | Job Application
+    Expects format: email subject
+    Example: john@gmail.com Job Application – Serame
     Returns (email, subject) or (None, None) if invalid.
     """
-    if "|" not in text:
+    match = re.match(r"([\w\.-]+@[\w\.-]+\.\w+)\s+(.+)", text.strip())
+    if not match:
         return None, None
 
-    parts = text.split("|", 1)
-    email   = parts[0].strip()
-    subject = parts[1].strip()
-
-    # Validate email
-    if not re.match(r"[\w\.-]+@[\w\.-]+\.\w+", email):
-        return None, None
-
-    if not subject:
-        return None, None
+    email   = match.group(1).strip()
+    subject = match.group(2).strip()
 
     return email, subject
 
@@ -128,9 +121,9 @@ def whatsapp():
     if not email or not subject:
         resp.message(
             "👋 To send your documents, use this format:\n\n"
-            "*email | subject*\n\n"
+            "*email subject*\n\n"
             "Example:\n"
-            "john@gmail.com | Job Application – Serame"
+            "john@gmail.com Job Application – Serame"
         )
         return str(resp)
 
