@@ -2,7 +2,6 @@ import os
 import re
 import base64
 import requests
-from io import BytesIO
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 
@@ -21,8 +20,13 @@ Please find the attached.
 Regards,
 Serame"""
 
-DRIVE_FILES = [
-    ("Serame_Documents.pdf", "1V7G_t7QvK3W_Sd7UqkNtcPhOuoQOf_Vm"),
+# Files stored directly in the repo
+ATTACHMENTS = [
+    "ID.jpg",
+    "Matric results.pdf",
+    "Serame Ntseare CV.pdf",
+    "Transcript.pdf",
+    "University diploma.pdf",
 ]
 
 # ─────────────────────────────────────────────
@@ -38,42 +42,23 @@ def parse_message(text):
     match = re.match(r"([\w\.-]+@[\w\.-]+\.\w+)\s+(.+)", text.strip())
     if not match:
         return None, None
-
-    email   = match.group(1).strip()
-    subject = match.group(2).strip()
-
-    return email, subject
-
-def download_drive_file(file_id):
-    url = f"https://drive.google.com/uc?export=download&id={file_id}"
-    session = requests.Session()
-    response = session.get(url, stream=True)
-
-    token = None
-    for key, value in response.cookies.items():
-        if key.startswith("download_warning"):
-            token = value
-            break
-
-    if token:
-        response = session.get(url, params={"confirm": token}, stream=True)
-
-    return BytesIO(response.content)
+    return match.group(1).strip(), match.group(2).strip()
 
 def send_email(recipient, subject):
     attachments = []
-    for filename, file_id in DRIVE_FILES:
-        try:
-            file_data = download_drive_file(file_id)
-            encoded   = base64.b64encode(file_data.read()).decode()
-            attachments.append({
-                "content":     encoded,
-                "filename":    filename,
-                "type":        "application/octet-stream",
-                "disposition": "attachment"
-            })
-        except Exception as e:
-            print(f"⚠️  Could not attach {filename}: {e}")
+    for filename in ATTACHMENTS:
+        filepath = os.path.join(os.path.dirname(__file__), filename)
+        if not os.path.exists(filepath):
+            print(f"⚠️  File not found, skipping: {filename}")
+            continue
+        with open(filepath, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode()
+        attachments.append({
+            "content":     encoded,
+            "filename":    filename,
+            "type":        "application/octet-stream",
+            "disposition": "attachment"
+        })
 
     payload = {
         "personalizations": [{"to": [{"email": recipient}]}],
@@ -107,9 +92,13 @@ def index():
 @app.route("/debug")
 def debug():
     key = os.environ.get("SENDGRID_API_KEY", "")
-    if not key:
-        return "❌ SENDGRID_API_KEY is NOT set in environment."
-    return f"✅ SENDGRID_API_KEY is set. Starts with: {key[:10]}... Length: {len(key)}"
+    files_found = [f for f in ATTACHMENTS if os.path.exists(os.path.join(os.path.dirname(__file__), f))]
+    files_missing = [f for f in ATTACHMENTS if not os.path.exists(os.path.join(os.path.dirname(__file__), f))]
+    return (
+        f"Key set: {'✅' if key else '❌'}\n"
+        f"Files found: {files_found}\n"
+        f"Files missing: {files_missing}"
+    )
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
