@@ -82,8 +82,7 @@ def send_email(recipient):
         json=payload
     )
 
-    if response.status_code not in (200, 202):
-        raise Exception(f"SendGrid error {response.status_code}: {response.text}")
+    return response.status_code, response.text
 
 # ─────────────────────────────────────────────
 #  FLASK APP
@@ -102,6 +101,11 @@ def debug():
         return "❌ SENDGRID_API_KEY is NOT set in environment."
     return f"✅ SENDGRID_API_KEY is set. Starts with: {key[:10]}... Length: {len(key)}"
 
+@app.route("/test-email")
+def test_email():
+    status, response_text = send_email(FROM_EMAIL)
+    return f"SendGrid Status: {status}\nResponse: {response_text}"
+
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     incoming = request.form.get("Body", "").strip()
@@ -116,10 +120,13 @@ def whatsapp():
         return str(resp)
 
     try:
-        send_email(email)
-        resp.message(f"✅ Done! Your documents have been sent to *{email}* successfully.")
+        status, response_text = send_email(email)
+        if status in (200, 202):
+            resp.message(f"✅ Done! Your documents have been sent to *{email}* successfully.")
+        else:
+            resp.message(f"❌ SendGrid error {status}: {response_text}")
     except Exception as e:
-        resp.message(f"❌ Something went wrong: {str(e)}\n\nPlease try again.")
+        resp.message(f"❌ Something went wrong: {str(e)}")
 
     return str(resp)
 
