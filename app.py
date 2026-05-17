@@ -1,12 +1,8 @@
 import os
 import re
+import base64
 import requests
-import smtplib
 from io import BytesIO
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 
@@ -14,10 +10,11 @@ from twilio.twiml.messaging_response import MessagingResponse
 #  CONFIGURATION
 # ─────────────────────────────────────────────
 
-GMAIL_ADDRESS      = "ellesonntseare@gmail.com"
-GMAIL_APP_PASSWORD = "qzhp yjri citw jult"
+SENDGRID_API_KEY = "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"
+FROM_EMAIL       = "ellesonntseare@gmail.com"
+FROM_NAME        = "Serame"
 
-DEFAULT_SUBJECT = "Application"
+DEFAULT_SUBJECT  = "Application"
 
 EMAIL_BODY = """Good day,
 
@@ -26,7 +23,7 @@ Please find the attached.
 Regards,
 Serame"""
 
-# Google Drive files — add as many as you need
+# Google Drive files — add more as needed
 # Format: ("Filename.pdf", "GOOGLE_DRIVE_FILE_ID")
 DRIVE_FILES = [
     ("Serame_Documents.pdf", "1V7G_t7QvK3W_Sd7UqkNtcPhOuoQOf_Vm"),
@@ -37,17 +34,14 @@ DRIVE_FILES = [
 # ─────────────────────────────────────────────
 
 def extract_email(text):
-    """Pull the first valid email address out of a WhatsApp message."""
     match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", text)
     return match.group(0) if match else None
 
 def download_drive_file(file_id):
-    """Download a file from Google Drive by its file ID."""
     url = f"https://drive.google.com/uc?export=download&id={file_id}"
     session = requests.Session()
     response = session.get(url, stream=True)
 
-    # Handle the Google Drive large-file confirmation page
     token = None
     for key, value in response.cookies.items():
         if key.startswith("download_warning"):
@@ -60,27 +54,39 @@ def download_drive_file(file_id):
     return BytesIO(response.content)
 
 def send_email(recipient):
-    """Send email with all Drive attachments to the given recipient."""
-    msg = MIMEMultipart()
-    msg["From"]    = GMAIL_ADDRESS
-    msg["To"]      = recipient
-    msg["Subject"] = DEFAULT_SUBJECT
-    msg.attach(MIMEText(EMAIL_BODY, "plain"))
-
+    attachments = []
     for filename, file_id in DRIVE_FILES:
         try:
             file_data = download_drive_file(file_id)
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(file_data.read())
-            encoders.encode_base64(part)
-            part.add_header("Content-Disposition", f"attachment; filename={filename}")
-            msg.attach(part)
+            encoded   = base64.b64encode(file_data.read()).decode()
+            attachments.append({
+                "content":     encoded,
+                "filename":    filename,
+                "type":        "application/octet-stream",
+                "disposition": "attachment"
+            })
         except Exception as e:
             print(f"⚠️  Could not attach {filename}: {e}")
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
-        server.sendmail(GMAIL_ADDRESS, recipient, msg.as_string())
+    payload = {
+        "personalizations": [{"to": [{"email": recipient}]}],
+        "from":    {"email": FROM_EMAIL, "name": FROM_NAME},
+        "subject": DEFAULT_SUBJECT,
+        "content": [{"type": "text/plain", "value": EMAIL_BODY}],
+        "attachments": attachments
+    }
+
+    response = requests.post(
+        "https://api.sendgrid.com/v3/mail/send",
+        headers={
+            "Authorization": f"Bearer {SENDGRID_API_KEY}",
+            "Content-Type":  "application/json"
+        },
+        json=payload
+    )
+
+    if response.status_code not in (200, 202):
+        raise Exception(f"SendGrid error {response.status_code}: {response.text}")
 
 # ─────────────────────────────────────────────
 #  FLASK APP
@@ -91,9 +97,8 @@ app = Flask(__name__)
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     incoming = request.form.get("Body", "").strip()
-    resp = MessagingResponse()
-
-    email = extract_email(incoming)
+    resp     = MessagingResponse()
+    email    = extract_email(incoming)
 
     if not email:
         resp.message(
