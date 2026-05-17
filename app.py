@@ -10,10 +10,9 @@ from twilio.twiml.messaging_response import MessagingResponse
 #  CONFIGURATION
 # ─────────────────────────────────────────────
 
-SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY")  # Set this in Railway Variables
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
 FROM_EMAIL       = "ellesonntseare@gmail.com"
 FROM_NAME        = "Serame"
-
 DEFAULT_SUBJECT  = "Application"
 
 EMAIL_BODY = """Good day,
@@ -23,8 +22,6 @@ Please find the attached.
 Regards,
 Serame"""
 
-# Google Drive files — add more as needed
-# Format: ("Filename.pdf", "GOOGLE_DRIVE_FILE_ID")
 DRIVE_FILES = [
     ("Serame_Documents.pdf", "1V7G_t7QvK3W_Sd7UqkNtcPhOuoQOf_Vm"),
 ]
@@ -94,6 +91,17 @@ def send_email(recipient):
 
 app = Flask(__name__)
 
+@app.route("/")
+def index():
+    return "✅ WhatsApp Email Sender is running."
+
+@app.route("/debug")
+def debug():
+    key = os.environ.get("SENDGRID_API_KEY", "")
+    if not key:
+        return "❌ SENDGRID_API_KEY is NOT set in environment."
+    return f"✅ SENDGRID_API_KEY is set. Starts with: {key[:10]}... Length: {len(key)}"
+
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     incoming = request.form.get("Body", "").strip()
@@ -114,10 +122,6 @@ def whatsapp():
         resp.message(f"❌ Something went wrong: {str(e)}\n\nPlease try again.")
 
     return str(resp)
-
-@app.route("/")
-def index():
-    return "✅ WhatsApp Email Sender is running."
 
 # ─────────────────────────────────────────────
 #  MAIN
