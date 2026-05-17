@@ -13,7 +13,6 @@ from twilio.twiml.messaging_response import MessagingResponse
 SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
 FROM_EMAIL       = "ellesonntseare@gmail.com"
 FROM_NAME        = "Serame"
-DEFAULT_SUBJECT  = "Application"
 
 EMAIL_BODY = """Good day,
 
@@ -30,9 +29,27 @@ DRIVE_FILES = [
 #  HELPERS
 # ─────────────────────────────────────────────
 
-def extract_email(text):
-    match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", text)
-    return match.group(0) if match else None
+def parse_message(text):
+    """
+    Expects format: email | subject
+    Example: john@gmail.com | Job Application
+    Returns (email, subject) or (None, None) if invalid.
+    """
+    if "|" not in text:
+        return None, None
+
+    parts = text.split("|", 1)
+    email   = parts[0].strip()
+    subject = parts[1].strip()
+
+    # Validate email
+    if not re.match(r"[\w\.-]+@[\w\.-]+\.\w+", email):
+        return None, None
+
+    if not subject:
+        return None, None
+
+    return email, subject
 
 def download_drive_file(file_id):
     url = f"https://drive.google.com/uc?export=download&id={file_id}"
@@ -50,7 +67,7 @@ def download_drive_file(file_id):
 
     return BytesIO(response.content)
 
-def send_email(recipient):
+def send_email(recipient, subject):
     attachments = []
     for filename, file_id in DRIVE_FILES:
         try:
@@ -68,7 +85,7 @@ def send_email(recipient):
     payload = {
         "personalizations": [{"to": [{"email": recipient}]}],
         "from":    {"email": FROM_EMAIL, "name": FROM_NAME},
-        "subject": DEFAULT_SUBJECT,
+        "subject": subject,
         "content": [{"type": "text/plain", "value": EMAIL_BODY}],
         "attachments": attachments
     }
@@ -101,28 +118,26 @@ def debug():
         return "❌ SENDGRID_API_KEY is NOT set in environment."
     return f"✅ SENDGRID_API_KEY is set. Starts with: {key[:10]}... Length: {len(key)}"
 
-@app.route("/test-email")
-def test_email():
-    status, response_text = send_email(FROM_EMAIL)
-    return f"SendGrid Status: {status}\nResponse: {response_text}"
-
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     incoming = request.form.get("Body", "").strip()
     resp     = MessagingResponse()
-    email    = extract_email(incoming)
 
-    if not email:
+    email, subject = parse_message(incoming)
+
+    if not email or not subject:
         resp.message(
-            "👋 Hi! To send your documents, just reply with the recipient's email address.\n\n"
-            "Example: send to john@gmail.com"
+            "👋 To send your documents, use this format:\n\n"
+            "*email | subject*\n\n"
+            "Example:\n"
+            "john@gmail.com | Job Application – Serame"
         )
         return str(resp)
 
     try:
-        status, response_text = send_email(email)
+        status, response_text = send_email(email, subject)
         if status in (200, 202):
-            resp.message(f"✅ Done! Your documents have been sent to *{email}* successfully.")
+            resp.message(f"✅ Done! Email sent to *{email}* with subject *{subject}*.")
         else:
             resp.message(f"❌ SendGrid error {status}: {response_text}")
     except Exception as e:
