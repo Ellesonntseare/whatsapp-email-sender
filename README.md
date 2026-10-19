@@ -1,23 +1,34 @@
 # Crownfall: Cannon Rush
 
-A self-contained 3D arcade game. Aim the cannon, grow your crew through upgrade gates, and bring down five fortresses before time runs out.
+A self-contained 3D arcade campaign with **12 fortresses, 36 combat waves, and three boss battles**. Aim the cannon, grow your crew through upgrade gates, and break the Iron Crown.
 
-Open [index.html](index.html) in a modern browser to play. Drag or use the left and right arrow keys to steer. The dotted aim guide predicts moving gates, and the selected gate glows.
+Open [index.html](index.html) directly in a modern browser, or run `python3 start.py` to start a local server and open the game in your browser. On Windows, double-click `START-WINDOWS.bat`; on macOS or Linux, run `./start.sh`. Python 3 is required for the server. All game assets are bundled for offline play.
 
-Soldiers run with moving arms, legs, shields, and capes. The cannon recoils, rolls its wheels when steered, and flashes when firing. Impacts send out sparks and expanding rings; damaged fortresses crack, shed battlements, and collapse on victory.
+Drag or use the left and right arrow keys to steer. The dotted aim guide predicts moving gates, and the selected gate glows. Click **Pause**, or press **P** or **Escape**, to pause and resume. Switching away from the game automatically pauses combat.
 
-| Stage | Challenge |
+Every fortress has three waves. Each wave rebuilds the defenders, resets your crew, and increases the fortress health. The second wave swaps selected gate choices; the third adds or speeds up moving gates and introduces extra ranged defenders. The stage timer runs during combat, with a short break between waves.
+
+| Stage | Fortress |
 | --- | --- |
-| Harbor Approach | Learn gate choices and build your crew. |
-| Crosswinds | Time moving gates, choose a route, and avoid defenders' warning lanes. |
-| The Citadel | Combine moving gates, stronger defenses, and route bonuses. |
-| Splitwater Crossing | Follow split paths through moving gates and a sweeping hazard. |
-| The Iron Crown | Attack the teal, exposed side of the boss castle and dodge its barrages. |
+| 1 | Harbor Approach |
+| 2 | Crosswinds |
+| 3 | The Citadel |
+| 4 | Splitwater Crossing |
+| 5 | Ember Bastion — boss |
+| 6 | Moonlit Canal |
+| 7 | Frostwatch |
+| 8 | Stormkeep — boss |
+| 9 | Sunken Ramparts |
+| 10 | Cinder Reach |
+| 11 | Royal Causeway |
+| 12 | The Iron Crown — final boss |
 
-On split paths, troops lock onto the route they enter. Guard troops deal **2 damage** to the fortress; raid troops deal **3 damage** and face more danger. The aim badge shows the route your next shot will enter. These bonuses stay with troops created at later gates.
+Your browser automatically saves a checkpoint at each new wave. **Continue Campaign** resumes from that wave with a fresh timer; **New Campaign** starts over. Saved progress belongs to the browser and URL used to play. If browser storage is unavailable, the game still works for the current session.
 
-The Iron Crown alternates its exposed side. Its red shield blocks damage on the other side. At half health it becomes enraged, switches sides faster, and attacks two lanes at once. Red strips warn before shots arrive. Finish a level to unlock the next one; losing lets you retry that level.
+On split paths, troops lock onto the route they enter. Guard troops deal **2 damage** to the fortress; raid troops deal **3 damage** and face more danger. Route bonuses stay with troops created at later gates. Bosses alternate their exposed side, block damage with the other shield, and enrage at half health. Red strips warn before attacks arrive.
 
-Each stage has its own scenery, with three procedural music themes. The castle towers, doorway, pennants, and ballistae come from [Kenney's Castle Kit](https://kenney.nl/assets/castle-kit), licensed CC0. Selected source models and the license are in [`assets/models`](assets/models). The playable HTML bundles the models and their texture so it can be opened directly.
+Soldiers have animated limbs, shields, and capes. The cannon recoils and flashes; impacts send out sparks and expanding rings. Damaged fortresses crack, shed battlements, and collapse. Each environment has its own palette and scenery, with three procedural music themes.
+
+Castle towers, doorways, pennants, and ballistae come from [Kenney's Castle Kit](https://kenney.nl/assets/castle-kit), licensed CC0. Selected source models and the license are in [`assets/models`](assets/models). The HTML bundles the models and their texture.
 
 The game includes Three.js and its GLTFLoader under the MIT license. The Three.js copyright and license notice are preserved in `index.html`.
